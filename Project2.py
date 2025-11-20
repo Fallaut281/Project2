@@ -10,6 +10,45 @@ def load_config(path):
         return toml.load(f)
 
 
+def parse_packages_file(filepath):
+    with open(filepath, 'r', encoding='utf-8') as f:
+        content = f.read()
+
+    packages = []
+    entries = content.split('\n---\n')
+
+    for entry in entries:
+        lines = [line.strip() for line in entry.splitlines() if line.strip()]
+        pkg = {}
+        for line in lines:
+            if ':' in line:
+                key, value = line.split(':', 1)
+                key = key.strip().lower()
+                value = value.strip()
+                pkg[key] = value
+        if 'package' in pkg:
+            packages.append(pkg)
+
+    return packages
+
+
+def find_package(packages, name, version):
+    for pkg in packages:
+        if pkg.get('package') == name and pkg.get('version') == version:
+            return pkg
+    return None
+
+
+def extract_dependencies(pkg):
+    deps_line = pkg.get('depends', '')
+    if not deps_line:
+        return []
+
+    deps = [dep.strip() for dep in deps_line.split(',')]
+    deps = [dep for dep in deps if dep]
+    return deps
+
+
 def validate_config(config):
     errors = []
 
@@ -50,6 +89,7 @@ def validate_config(config):
 
     return errors
 
+
 def main():
     if len(sys.argv) != 2:
         print("Usage: python main.py <path_to_config.toml>", file=sys.stderr)
@@ -73,12 +113,28 @@ def main():
             print(f"-{err}", file=sys.stderr)
         sys.exit(1)
 
-    print(f"package_name = {config['package_name']!r}")
-    print(f"repository_url = {config['repository_url']!r}")
-    print(f"mode = {config['mode']!r}")
-    print(f"package_version = {config['package_version']!r}")
-    print(f"max_depth = {config['max_depth']!r}")
-    print(f"filter_substring = {config.get('filter_substring', None)!r}")
+    repo_path = config['repository_url']
+    pkg_name = config['package_name']
+    pkg_version = config['package_version']
+
+    packages_file_path = os.path.join(repo_path, 'Packages')
+
+    if not os.path.isfile(packages_file_path):
+        print(f"Error: Packages file not found at {packages_file_path}", file=sys.stderr)
+        sys.exit(1)
+
+    packages = parse_packages_file(packages_file_path)
+    pkg = find_package(packages, pkg_name, pkg_version)
+
+    if not pkg:
+        print(f"Error: Package {pkg_name}={pkg_version} not found in repository.", file=sys.stderr)
+        sys.exit(1)
+
+    dependencies = extract_dependencies(pkg)
+
+    print("Direct dependencies")
+    for dep in dependencies:
+        print(dep)
 
 
 if __name__ == "__main__":

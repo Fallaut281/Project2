@@ -1,0 +1,21 @@
+Package: myapp
+Version: 1.0.0
+Depends: libcurl4, zlib1g
+Description: My awesome app
+
+---
+Package: libcurl4
+Version: 7.68.0
+Depends: zlib1g
+Description: Library for HTTP requests
+
+---
+Package: zlib1g
+Version: 1.2.11
+Description: Compression library
+
+---
+Package: extra-utils
+Version: 0.5.0
+Depends: libcurl4
+Description: Some utilities

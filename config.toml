@@ -1,4 +1,4 @@
-package_name = "my-package"
+package_name = "myapp"
 repository_url = "./test-repo"
 mode = "offline"
 package_version = "1.0.0"
