@@ -1,6 +1,7 @@
 import sys
 import os
 import toml
+from collections import deque
 
 
 def load_config(path):
@@ -47,6 +48,49 @@ def extract_dependencies(pkg):
     deps = [dep.strip() for dep in deps_line.split(',')]
     deps = [dep for dep in deps if dep]
     return deps
+
+
+def parse_test_graph(filepath):
+    graph = {}
+    with open(filepath, 'r', encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if '->' in line:
+                node, deps_str = line.split('->', 1)
+                node = node.strip()
+                deps = [d.strip() for d in deps_str.split(',')]
+                deps = [d for d in deps if d]
+                graph[node] = deps
+    return graph
+
+def build_dependency_graph_bfs(start_package, max_depth, get_deps_func, filter_substring=None):
+    graph = {}
+    visited = set()
+    queue = deque([(start_package, 0)])
+
+    while queue:
+        current_pkg, depth = queue.popleft()
+
+        if depth > max_depth:
+            continue
+
+        if filter_substring and filter_substring in current_pkg:
+            continue
+
+        if current_pkg in visited:
+            continue
+
+        visited.add(current_pkg)
+
+        deps = get_deps_func(current_pkg)
+        graph[current_pkg] = deps
+
+        if depth < max_depth:
+            for dep in deps:
+                if dep not in visited:
+                    queue.append((dep, depth + 1))
+
+    return graph
 
 
 def validate_config(config):
@@ -116,25 +160,39 @@ def main():
     repo_path = config['repository_url']
     pkg_name = config['package_name']
     pkg_version = config['package_version']
+    max_depth = config['max_depth']
+    filter_substring = config.get('filter_substring', None)
 
-    packages_file_path = os.path.join(repo_path, 'Packages')
+    mode = config['mode']
 
-    if not os.path.isfile(packages_file_path):
-        print(f"Error: Packages file not found at {packages_file_path}", file=sys.stderr)
-        sys.exit(1)
+    if mode == 'test':
+        graph_data = parse_test_graph(repo_path)
+        def get_deps_func(name):
+            return graph_data.get(name, [])
 
-    packages = parse_packages_file(packages_file_path)
-    pkg = find_package(packages, pkg_name, pkg_version)
+        graph = build_dependency_graph_bfs(pkg_name, max_depth, get_deps_func, filter_substring)
+    else:
+        packages_file_path = os.path.join(repo_path, 'Packages')
+        if not os.path.isfile(packages_file_path):
+            print(f"Error: Packages file not found at {packages_file_path}", file=sys.stderr)
+            sys.exit(1)
 
-    if not pkg:
-        print(f"Error: Package {pkg_name}={pkg_version} not found in repository.", file=sys.stderr)
-        sys.exit(1)
+        packages = parse_packages_file(packages_file_path)
 
-    dependencies = extract_dependencies(pkg)
+        pkg_deps_map = {}
+        for pkg in packages:
+            name = pkg['package']
+            deps = extract_dependencies(pkg)
+            pkg_deps_map[name] = deps
 
-    print("Direct dependencies")
-    for dep in dependencies:
-        print(dep)
+        def get_deps_func(name):
+            return pkg_deps_map.get(name, [])
+
+        graph = build_dependency_graph_bfs(pkg_name, max_depth, get_deps_func, filter_substring)
+
+    print("Dependency graph:")
+    for pkg, deps in graph.items():
+        print(f"{pkg} -> {', '.join(deps) if deps else '(no deps)'}")
 
 
 if __name__ == "__main__":
