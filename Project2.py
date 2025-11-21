@@ -3,14 +3,14 @@ import os
 import toml
 from collections import deque
 
-
+# Загружает конфигурационный файл TOML и возвращает его содержимое как словарь
 def load_config(path):
     if not os.path.isfile(path):
         raise FileNotFoundError(f"Конфигурационный файл не найден: {path}")
     with open(path, 'r', encoding='utf-8') as f:
         return toml.load(f)
 
-
+# Парсит файл Packages (в формате Ubuntu) и возвращает список пакетов
 def parse_packages_file(filepath):
     with open(filepath, 'r', encoding='utf-8') as f:
         content = f.read()
@@ -32,14 +32,14 @@ def parse_packages_file(filepath):
 
     return packages
 
-
+# Ищет пакет с заданным именем и версией в списке пакетов
 def find_package(packages, name, version):
     for pkg in packages:
         if pkg.get('package') == name and pkg.get('version') == version:
             return pkg
     return None
 
-
+# Извлекает зависимости из поля 'depends' пакета и возвращает их список
 def extract_dependencies(pkg):
     deps_line = pkg.get('depends', '')
     if not deps_line:
@@ -49,7 +49,7 @@ def extract_dependencies(pkg):
     deps = [dep for dep in deps if dep]
     return deps
 
-
+# Парсит тестовый файл с описанием графа (например, A -> B, C) и возвращает словарь
 def parse_test_graph(filepath):
     graph = {}
     with open(filepath, 'r', encoding='utf-8') as f:
@@ -63,6 +63,7 @@ def parse_test_graph(filepath):
                 graph[node] = deps
     return graph
 
+# Строит граф зависимостей с помощью BFS, учитывая глубину и фильтрацию
 def build_dependency_graph_bfs(start_package, max_depth, get_deps_func, filter_substring=None):
     graph = {}
     visited = set()
@@ -92,7 +93,43 @@ def build_dependency_graph_bfs(start_package, max_depth, get_deps_func, filter_s
 
     return graph
 
+# Выполняет топологическую сортировку графа и возвращает порядок установки пакетов
+def topological_sort(graph):
+    in_degree = {}
+    reverse_graph = {}
 
+    for node in graph:
+        in_degree[node] = 0
+        reverse_graph[node] = []
+
+    for node, deps in graph.items():
+        for dep in deps:
+            if dep not in reverse_graph:
+                reverse_graph[dep] = []
+                in_degree[dep] = 0
+            reverse_graph[dep].append(node)
+            in_degree[node] = in_degree.get(node, 0) + 1
+
+    queue = deque()
+    for node, deg in in_degree.items():
+        if deg == 0:
+            queue.append(node)
+
+    result = []
+    while queue:
+        node = queue.popleft()
+        result.append(node)
+        for neighbor in reverse_graph.get(node, []):
+            in_degree[neighbor] -= 1
+            if in_degree[neighbor] == 0:
+                queue.append(neighbor)
+
+    if len(result) != len(in_degree):
+        return None, "Граф имеет цикл, топологическая сортировка невозможна"
+
+    return result, None
+
+# Проверяет, все ли обязательные параметры в конфиге указаны правильно
 def validate_config(config):
     errors = []
 
@@ -133,7 +170,7 @@ def validate_config(config):
 
     return errors
 
-
+# Главная функция: загружает конфиг, строит граф, выводит зависимости и порядок установки
 def main():
     if len(sys.argv) != 2:
         print("Usage: python main.py <path_to_config.toml>", file=sys.stderr)
@@ -194,7 +231,23 @@ def main():
     for pkg, deps in graph.items():
         print(f"{pkg} -> {', '.join(deps) if deps else '(no deps)'}")
 
+    #4
+    order, error = topological_sort(graph)
+    if error:
+        print(f"Error: {error}", file=sys.stderr)
+        sys.exit(1)
+
+    print("Порядок установки (топологическая сортировка):")
+    for i, pkg in enumerate(order, 1):
+        print(f"{i}. {pkg}")
+
+    print("\nПримечание: Реальные менеджеры пакетов (например, apt) могут по-другому разрешать зависимости из-за:")
+    print("- Ограничений по версиям (например, 'lib>=1.2')")
+    print("- Виртуальных пакетов и альтернатив")
+    print("- Предустановленных системных пакетов")
+    print("- Правил разрешения конфликтов и политик установки")
+    print("Наша простая модель не учитывает эти сложности.")
+
 
 if __name__ == "__main__":
     main()
-
